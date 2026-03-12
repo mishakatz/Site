@@ -271,7 +271,7 @@
       const token = getToken();
       if (token) headers['Authorization'] = `token ${token}`;
 
-      const resp = await fetch(apiURL, { headers });
+      const resp = await fetch(apiURL, { headers, cache: 'no-store' });
       if (!resp.ok) throw new Error(`GitHub API: ${resp.status}`);
 
       const data = await resp.json();

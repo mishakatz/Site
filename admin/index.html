@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Misha Katz</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* Admin toolbar */
+  .admin-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: #1a1a1a;
+    color: #fff;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 14px;
+  }
+  .admin-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .admin-bar-left a {
+    color: #999;
+    text-decoration: none;
+    font-size: 13px;
+  }
+  .admin-bar-left a:hover { color: #fff; }
+  .admin-status {
+    color: #666;
+    font-size: 13px;
+  }
+  .admin-status.modified {
+    color: #f5a623;
+  }
+  .admin-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .btn-save {
+    background: #fff;
+    color: #1a1a1a;
+    font-weight: 600;
+  }
+  .btn-token {
+    background: #333;
+    color: #ccc;
+  }
+
+  /* Toast notification */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 1001;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    color: #fff;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+  }
+  .toast.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .toast.success { background: #1a1a1a; }
+  .toast.error { background: #c0392b; }
+
+  /* Page content area */
+  .admin-page {
+    padding-top: 52px;
+  }
+
+  /* Editable element highlights */
+  [contenteditable="true"] {
+    outline: none;
+    transition: box-shadow 0.15s;
+    border-radius: 2px;
+  }
+  [contenteditable="true"]:hover {
+    box-shadow: 0 0 0 2px rgba(26, 26, 26, 0.08);
+  }
+  [contenteditable="true"]:focus {
+    box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.4);
+  }
+
+  /* Token modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0,0,0,0.5);
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open {
+    display: flex;
+  }
+  .modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 480px;
+    width: 90%;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  }
+  .modal h2 {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+  .modal p {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+  .modal input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: monospace;
+    margin-bottom: 16px;
+  }
+  .modal input:focus {
+    outline: none;
+    border-color: #1a1a1a;
+  }
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .modal .btn-cancel {
+    background: #eee;
+    color: #333;
+  }
+  .modal .btn-confirm {
+    background: #1a1a1a;
+    color: #fff;
+  }
+</style>
+</head>
+<body>
+
+<!-- Admin toolbar -->
+<div class="admin-bar">
+  <div class="admin-bar-left">
+    <strong>admin</strong>
+    <a href="../">view site</a>
+    <span class="admin-status" id="status">loading...</span>
+  </div>
+  <div class="admin-bar-right">
+    <button class="btn btn-token" id="tokenBtn">token</button>
+    <button class="btn btn-save" id="saveBtn" disabled>save changes</button>
+  </div>
+</div>
+
+<!-- Token modal -->
+<div class="modal-overlay" id="tokenModal">
+  <div class="modal">
+    <h2>GitHub Token</h2>
+    <p>
+      Create a <strong>Personal Access Token</strong> (classic) at
+      github.com/settings/tokens with <code>repo</code> scope.
+      It will be stored only in your browser's localStorage.
+    </p>
+    <input type="password" id="tokenInput" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn btn-cancel" id="tokenCancel">cancel</button>
+      <button class="btn btn-confirm" id="tokenConfirm">save token</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Page content rendered here -->
+<div class="admin-page" id="page"></div>
+
+<script>
+  const REPO_OWNER = 'mishakatz';
+  const REPO_NAME = 'Site';
+  const FILE_PATH = 'index.html';
+  const BRANCH = 'main';
+
+  let originalHTML = '';
+  let fileSHA = '';
+  let headContent = '';
+  let isModified = false;
+
+  const pageEl = document.getElementById('page');
+  const statusEl = document.getElementById('status');
+  const saveBtn = document.getElementById('saveBtn');
+  const tokenBtn = document.getElementById('tokenBtn');
+  const tokenModal = document.getElementById('tokenModal');
+  const tokenInput = document.getElementById('tokenInput');
+  const tokenCancel = document.getElementById('tokenCancel');
+  const tokenConfirm = document.getElementById('tokenConfirm');
+  const toastEl = document.getElementById('toast');
+
+  // --- Toast ---
+  function showToast(msg, type) {
+    toastEl.textContent = msg;
+    toastEl.className = 'toast ' + type;
+    requestAnimationFrame(() => toastEl.classList.add('visible'));
+    setTimeout(() => toastEl.classList.remove('visible'), 3000);
+  }
+
+  // --- Token management ---
+  function getToken() {
+    return localStorage.getItem('gh_admin_token') || '';
+  }
+
+  tokenBtn.addEventListener('click', () => {
+    tokenInput.value = getToken();
+    tokenModal.classList.add('open');
+    tokenInput.focus();
+  });
+  tokenCancel.addEventListener('click', () => tokenModal.classList.remove('open'));
+  tokenConfirm.addEventListener('click', () => {
+    const t = tokenInput.value.trim();
+    if (t) {
+      localStorage.setItem('gh_admin_token', t);
+      showToast('Token saved', 'success');
+    } else {
+      localStorage.removeItem('gh_admin_token');
+      showToast('Token removed', 'success');
+    }
+    tokenModal.classList.remove('open');
+  });
+  tokenModal.addEventListener('click', (e) => {
+    if (e.target === tokenModal) tokenModal.classList.remove('open');
+  });
+
+  // --- Load page from GitHub ---
+  async function loadPage() {
+    try {
+      const apiURL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=${BRANCH}&t=${Date.now()}`;
+      const headers = { 'Accept': 'application/vnd.github.v3+json' };
+      const token = getToken();
+      if (token) headers['Authorization'] = `token ${token}`;
+
+      const resp = await fetch(apiURL, { headers });
+      if (!resp.ok) throw new Error(`GitHub API: ${resp.status}`);
+
+      const data = await resp.json();
+      fileSHA = data.sha;
+      originalHTML = decodeBase64UTF8(data.content);
+
+      renderEditable(originalHTML);
+      statusEl.textContent = 'ready';
+      statusEl.className = 'admin-status';
+    } catch (err) {
+      statusEl.textContent = 'error loading';
+      showToast('Failed to load: ' + err.message, 'error');
+    }
+  }
+
+  // --- Decode base64 with UTF-8 support ---
+  function decodeBase64UTF8(b64) {
+    const binStr = atob(b64.replace(/\n/g, ''));
+    const bytes = Uint8Array.from(binStr, c => c.charCodeAt(0));
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+
+  // --- Render page with contenteditable ---
+  function renderEditable(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // Extract <head> content to preserve it for saving
+    headContent = doc.head.innerHTML;
+
+    // Inject styles into admin page
+    const styles = doc.querySelectorAll('style');
+    document.querySelectorAll('.injected-style').forEach(s => s.remove());
+    styles.forEach(s => {
+      const clone = s.cloneNode(true);
+      clone.classList.add('injected-style');
+      document.head.appendChild(clone);
+    });
+
+    // Clone body content
+    pageEl.innerHTML = doc.body.innerHTML;
+
+    // Make text elements editable
+    const editableSelectors = [
+      '.name', '.intro', '.section-title',
+      '.entry-role', '.entry-company', '.entry-date',
+      '.entry-note', '.entry-tag', '.footer'
+    ];
+
+    editableSelectors.forEach(sel => {
+      pageEl.querySelectorAll(sel).forEach(el => {
+        el.setAttribute('contenteditable', 'true');
+        el.setAttribute('spellcheck', 'false');
+      });
+    });
+
+    // Listen for changes
+    pageEl.addEventListener('input', onContentChange);
+  }
+
+  function onContentChange() {
+    if (!isModified) {
+      isModified = true;
+      statusEl.textContent = 'modified';
+      statusEl.className = 'admin-status modified';
+      saveBtn.disabled = false;
+    }
+  }
+
+  // --- Reconstruct full HTML from edited content ---
+  function buildHTML() {
+    // Clone the page container
+    const clone = pageEl.cloneNode(true);
+
+    // Remove contenteditable and spellcheck attributes
+    clone.querySelectorAll('[contenteditable]').forEach(el => {
+      el.removeAttribute('contenteditable');
+      el.removeAttribute('spellcheck');
+    });
+
+    // Build full document
+    const lines = [];
+    lines.push('<!DOCTYPE html>');
+    lines.push('<html lang="en">');
+    lines.push('<head>');
+    lines.push(headContent);
+    lines.push('</head>');
+    lines.push('<body>');
+    lines.push('');
+    lines.push(clone.innerHTML);
+    lines.push('');
+    lines.push('</body>');
+    lines.push('</html>');
+
+    return lines.join('\n') + '\n';
+  }
+
+  // --- Save to GitHub ---
+  saveBtn.addEventListener('click', async () => {
+    const token = getToken();
+    if (!token) {
+      tokenInput.value = '';
+      tokenModal.classList.add('open');
+      tokenInput.focus();
+      showToast('Enter GitHub token to save', 'error');
+      return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'saving...';
+
+    try {
+      const newContent = buildHTML();
+      const encoded = btoa(
+        new Uint8Array(new TextEncoder().encode(newContent))
+          .reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+
+      const apiURL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
+      const resp = await fetch(apiURL, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: 'Update content via admin',
+          content: encoded,
+          sha: fileSHA,
+          branch: BRANCH
+        })
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.message || resp.status);
+      }
+
+      const result = await resp.json();
+      fileSHA = result.content.sha;
+      isModified = false;
+      statusEl.textContent = 'saved';
+      statusEl.className = 'admin-status';
+      showToast('Changes saved to GitHub', 'success');
+    } catch (err) {
+      showToast('Save failed: ' + err.message, 'error');
+    }
+
+    saveBtn.textContent = 'save changes';
+    if (isModified) saveBtn.disabled = false;
+  });
+
+  // --- Warn on unsaved changes ---
+  window.addEventListener('beforeunload', (e) => {
+    if (isModified) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
+  // --- Init ---
+  loadPage();
+</script>
+
+</body>
+</html>

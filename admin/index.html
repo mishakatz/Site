@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Admin — Misha Katz</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -411,9 +414,14 @@
       const result = await resp.json();
       fileSHA = result.content.sha;
       isModified = false;
-      statusEl.textContent = 'saved';
+      statusEl.textContent = 'saved — reloading...';
       statusEl.className = 'admin-status';
       showToast('Changes saved to GitHub', 'success');
+
+      // Hard reload after short delay so user sees the toast
+      setTimeout(() => {
+        window.location.href = window.location.pathname + '?t=' + Date.now();
+      }, 1200);
     } catch (err) {
       showToast('Save failed: ' + err.message, 'error');
     }

@@ -330,6 +330,15 @@
 
     // Listen for changes
     pageEl.addEventListener('input', onContentChange);
+
+    // Paste as plain text to inherit block's CSS formatting
+    pageEl.addEventListener('paste', (e) => {
+      const target = e.target.closest('[contenteditable="true"]');
+      if (!target) return;
+      e.preventDefault();
+      const text = e.clipboardData.getData('text/plain');
+      document.execCommand('insertText', false, text);
+    });
   }
 
   function onContentChange() {
